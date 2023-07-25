@@ -32,6 +32,7 @@ package http
 */
 import "C"
 import (
+	"errors"
 	"reflect"
 	"runtime"
 	"strings"
@@ -74,6 +75,17 @@ func handleCApiStatus(status C.CAPIStatus) {
 	case C.CAPIInvalidPhase:
 		panic(errInvalidPhase)
 	}
+}
+
+func capiStatusToStr(status C.CAPIStatus) string {
+	switch status {
+	case C.CAPIInternalFailure:
+		return errInternalFailure
+	case C.CAPISerializationFailure:
+		return errSerializationFailure
+	}
+
+	return "unknown status"
 }
 
 func (c *httpCApiImpl) HttpContinue(r unsafe.Pointer, status uint64) {
@@ -316,4 +328,32 @@ func (c *httpCApiImpl) HttpGetStringFilterState(rr unsafe.Pointer, key string) s
 	}
 
 	return strings.Clone(value)
+}
+
+func (c *httpCApiImpl) HttpGetStringProperty(rr unsafe.Pointer, key string) (string, error) {
+	r := (*httpRequest)(rr)
+	var value string
+	var rc int
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.sema.Add(1)
+	res := C.envoyGoFilterHttpGetStringProperty(unsafe.Pointer(r.req), unsafe.Pointer(&key),
+		unsafe.Pointer(&value), (*C.int)(unsafe.Pointer(&rc)))
+	if res == C.CAPIYield {
+		atomic.AddInt32(&r.waitingOnEnvoy, 1)
+		r.sema.Wait()
+		res = C.CAPIStatus(rc)
+	} else {
+		r.sema.Done()
+		handleCApiStatus(res)
+	}
+
+	switch res {
+	case C.CAPIOK:
+		return strings.Clone(value), nil
+	case C.CAPIValueNotFound:
+		return "", nil
+	default:
+		return "", errors.New(capiStatusToStr(res))
+	}
 }
