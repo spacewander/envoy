@@ -122,3 +122,14 @@ func (f *filter) EncodeData(buffer api.BufferInstance, endStream bool) api.Statu
 	f.panicIfFailed()
 	return api.Continue
 }
+
+func (f *filter) OnLog(logType api.AccessLogType) {
+	if logType != api.AccessLogDownstreamEnd {
+		return
+	}
+
+	f.assertProperty("response.size", "7") // "goodbye"
+
+	// panic if any condition is not met
+	f.panicIfFailed()
+}

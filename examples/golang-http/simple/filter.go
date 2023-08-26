@@ -74,6 +74,15 @@ func (f *filter) EncodeTrailers(trailers api.ResponseTrailerMap) api.StatusType 
 	return api.Continue
 }
 
+func (f *filter) OnLog(logType api.AccessLogType) {
+	if logType != api.AccessLogDownstreamEnd {
+		// Envoy is configured to log the request in the middle
+		return
+	}
+
+	// Collect request info when it is ended
+}
+
 func (f *filter) OnDestroy(reason api.DestroyReason) {
 }
 */

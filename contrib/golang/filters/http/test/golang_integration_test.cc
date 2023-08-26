@@ -805,7 +805,47 @@ TEST_P(GolangIntegrationTest, AccessLog) {
   EXPECT_TRUE(upstream_request_->complete());
   EXPECT_TRUE(response->complete());
   EXPECT_EQ("206", getHeader(upstream_request_->headers(), "respCode"));
+  EXPECT_EQ("7", getHeader(upstream_request_->headers(), "respSize"));
   EXPECT_EQ("true", getHeader(upstream_request_->headers(), "canRunAsyncly"));
+
+  cleanup();
+}
+
+TEST_P(GolangIntegrationTest, AccessLogInMiddle) {
+  config_helper_.addConfigModifier(
+      [&](envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager&
+              hcm) {
+        auto* typed_config =
+            hcm.mutable_http_filters(hcm.http_filters_size() - 1)->mutable_typed_config();
+
+        envoy::extensions::filters::http::router::v3::Router router_config;
+        router_config.mutable_upstream_log_options()->set_flush_upstream_log_on_upstream_stream(
+            true);
+
+        typed_config->PackFrom(router_config);
+      });
+  initializeBasicFilter(ACCESSLOG, "test.com");
+
+  auto path = "/test";
+  codec_client_ = makeHttpConnection(makeClientConnection(lookupPort("http")));
+  Http::TestRequestHeaderMapImpl request_headers{
+      {":method", "POST"},
+      {":path", path},
+      {":scheme", "http"},
+      {":authority", "test.com"},
+  };
+
+  auto response = sendRequestAndWaitForResponse(request_headers, 0, default_response_headers_, 0);
+  EXPECT_TRUE(response->complete());
+  codec_client_->close();
+
+  // use the second request to get the logged data
+  codec_client_ = makeHttpConnection(makeClientConnection((lookupPort("http"))));
+  response = sendRequestAndWaitForResponse(request_headers, 0, default_response_headers_, 0);
+
+  EXPECT_TRUE(response->complete());
+  // 2 from the last call plus 1 from this call
+  EXPECT_EQ("3", getHeader(upstream_request_->headers(), "accessLogCallTimes"));
 
   cleanup();
 }

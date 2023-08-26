@@ -212,17 +212,13 @@ void Filter::onDestroy() {
 
 // access_log is executed before the log of the stream filter
 void Filter::log(const Http::RequestHeaderMap*, const Http::ResponseHeaderMap*,
-                 const Http::ResponseTrailerMap*, const StreamInfo::StreamInfo& stream_info,
-                 Envoy::AccessLog::AccessLogType) {
+                 const Http::ResponseTrailerMap*, const StreamInfo::StreamInfo&,
+                 Envoy::AccessLog::AccessLogType type) {
   // `log` may be called multiple times with different log type
-  if (!stream_info.requestComplete().has_value()) {
-    return;
-  }
-
-  // TODO: support mid-request logging
   auto& state = getProcessorState();
-  state.log();
-  dynamic_lib_->envoyGoFilterOnHttpLog(req_);
+  state.enterLog();
+  dynamic_lib_->envoyGoFilterOnHttpLog(req_, int(type));
+  state.leaveLog();
 }
 
 /*** common APIs for filter, both decode and encode ***/
